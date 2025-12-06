@@ -1,860 +1,626 @@
 'use client';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Plus, Trash2, Printer } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Trash2, Printer, ShoppingCart, User, Calendar, UserRound } from 'lucide-react';
 
-// --- Types ---
 interface Header {
-  customerCode: string;
   customerName: string;
-  address: string;
-  contact: string;
-  salesmanCode: string;
+  phone: string;
   salesmanName: string;
-  orderNo: string;
   date: string;
-  custNtn: string;
-  custCnic: string;
-  custGst: string;
+  companyName: string;
+  companyAddress: string;
+  companyPhone: string;
+  companyEmail: string;
 }
 
 interface Item {
   id: number;
-  code: string;
   desc: string;
-  packSize: string;
-  batchNo: string;
   qty: number;
-  tp: number;
-  mrp: number;
-  discPercent: number;
+  price: number;
+  discount: number;
   gstPercent: number;
-  addGst: number;
-  advTax: number;
 }
 
-interface CalculatedItem extends Item {
-  grossAmount: number;
-  discAmt: number;
-  gstAmt: number;
-  netAmount: number;
-}
-
-interface InputProps {
-  name: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+// Update the CleanInput component to accept all standard input props
+const CleanInput: React.FC<{
+  value: string | number;
+  onChange: (val: string) => void;
   className?: string;
+  placeholder?: string;
   style?: React.CSSProperties;
   type?: string;
-}
-
-interface TableInputProps {
-  value: string | number;
-  onChange: (value: string | number) => void;
-  type?: string;
   align?: 'left' | 'right' | 'center';
-  rowId: number;
-  field: string;
-  inputRefs: React.MutableRefObject<Record<string, HTMLInputElement | null>>;
-  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, rowId: number, field: string) => void;
-  onFieldFocus: (rowId: number, field: string) => void;
-  isFocused: boolean;
-  className?: string; 
-}
-
-// --- Helper Components ---
-const Input: React.FC<InputProps> = ({ name, value, onChange, className = "", style = {}, type = "text" }) => (
+  min?: string | number; 
+  max?: string | number; 
+  step?: string | number; 
+}> = ({ value, onChange, className = "", placeholder, style, type = "text", align = "left", min, max, step }) => (
   <input
     type={type}
-    name={name}
     value={value}
-    onChange={onChange}
-    className={`bg-transparent border-b border-gray-300 focus:border-blue-500 focus:outline-none w-full print:border-none px-1 ${className}`}
-    style={style}
-  />
-);
-
-const TableInput: React.FC<TableInputProps> = ({
-  value,
-  onChange,
-  type = "text",
-  align = "left",
-  rowId,
-  field,
-  inputRefs,
-  handleKeyDown,
-  onFieldFocus,
-  isFocused
-}) => (
-  <input
-    ref={(el) => {
-      const refKey = `${rowId}-${field}`;
-      if (inputRefs && inputRefs.current) {
-        inputRefs.current[refKey] = el;
-      }
-    }}
-    type={type}
-    value={value || ''}
     onChange={(e) => onChange(e.target.value)}
-    onKeyDown={(e) => handleKeyDown(e, rowId, field)}
-    onFocus={() => onFieldFocus(rowId, field)}
-    className={`w-full bg-transparent p-1 focus:bg-blue-50 focus:outline-none print:p-0 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-      } ${isFocused ? 'ring-1 ring-blue-500' : ''
-      } print:ring-0 print:border print:border-gray-300 print:rounded-none print:bg-white print:focus:bg-white`}
+    placeholder={placeholder}
+    className={`bg-transparent outline-none placeholder-gray-400 hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-blue-300 transition-all rounded px-2 py-1 w-full ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} ${className}`}
+    style={style}
+    min={min}
+    max={max}
+    step={step}
   />
 );
 
 const InvoiceApp: React.FC = () => {
-  // --- State for Header Information ---
+
   const [header, setHeader] = useState<Header>({
-    customerCode: '',
+    companyName: '---',
+    companyAddress: '---',
+    companyPhone: '+92 ',
+    companyEmail: '',
     customerName: '',
-    address: '',
-    contact: '',
-    salesmanCode: '',
+    phone: '',
     salesmanName: '',
-    orderNo: '',
-    date: new Date().toISOString().split('T')[0], // Default to today
-    custNtn: '',
-    custCnic: '',
-    custGst: '',
+    date: new Date().toISOString().split('T')[0],
   });
 
-  // --- State for Line Items ---
-  const [items, setItems] = useState<Item[]>([
-    {
-      id: 1,
-      code: '',
-      desc: '',
-      packSize: '',
-      batchNo: '',
-      qty: 1,
-      tp: 0,
-      mrp: 0,
-      discPercent: 0,
-      gstPercent: 0,
-      addGst: 0,
-      advTax: 0,
-    },
-  ]);
-
-  // Track which input field should be focused
-  interface FocusPosition {
-    rowId: number;
-    field: string;
-  }
-
-  const [focusPosition, setFocusPosition] = useState<FocusPosition>({ rowId: 1, field: 'code' });
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  // Set focus when focusPosition changes
-  useEffect(() => {
-    const refKey = `${focusPosition.rowId}-${focusPosition.field}`;
-    if (inputRefs.current[refKey]) {
-      if (document.activeElement !== inputRefs.current[refKey]) {
-        inputRefs.current[refKey]?.focus();
-      }
-    }
-  }, [focusPosition]);
-
-  // --- Handlers ---
-  const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setHeader((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleItemChange = (id: number, field: keyof Item, value: string | number) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item
-      )
-    );
-  };
-
-  // Optimize focus handler to avoid unnecessary state updates
-  const handleFieldFocus = (rowId: number, field: string) => {
-    if (focusPosition.rowId !== rowId || focusPosition.field !== field) {
-      setFocusPosition({ rowId, field });
-    }
-  };
-
-  // Handle key navigation in table inputs
-  const handleKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
-    rowId: number,
-    field: string
-  ) => {
-    const fields = ['code', 'desc', 'packSize', 'batchNo', 'qty', 'tp', 'mrp', 'discPercent', 'gstPercent', 'addGst', 'advTax'];
-    const currentIndex = fields.indexOf(field);
-
-    if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-
-      // Move to next field
-      if (currentIndex < fields.length - 1) {
-        // Next field in same row
-        setFocusPosition({ rowId, field: fields[currentIndex + 1] });
-      } else {
-        // Move to first field of next row
-        const currentRowIndex = items.findIndex(item => item.id === rowId);
-        if (currentRowIndex < items.length - 1) {
-          // Next row
-          const nextRowId = items[currentRowIndex + 1].id;
-          setFocusPosition({ rowId: nextRowId, field: 'code' });
-        } else {
-          // Add new row if at last row
-          addItem();
-        }
-      }
-    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      const direction = e.key === 'ArrowDown' ? 1 : -1;
-      const currentRowIndex = items.findIndex(item => item.id === rowId);
-      const newRowIndex = currentRowIndex + direction;
-
-      if (newRowIndex >= 0 && newRowIndex < items.length) {
-        const newRowId = items[newRowIndex].id;
-        setFocusPosition({ rowId: newRowId, field });
-      }
-    }
-  };
-
-  const addItem = () => {
-    const ids = items.map(i => i.id).filter(id => typeof id === 'number' && !isNaN(id));
-    const maxId = ids.length > 0 ? Math.max(...ids) : 0;
-    const newId = maxId + 1;
-
-    setItems(prev => [
-      ...prev,
-      {
-        id: newId,
-        code: '',
-        desc: '',
-        packSize: '',
-        batchNo: '',
-        qty: 1,
-        tp: 0,
-        mrp: 0,
-        discPercent: 0,
-        gstPercent: 0,
-        addGst: 0,
-        advTax: 0,
-      },
-    ]);
-
-    // Schedule focus change for after render
-    setTimeout(() => {
-      setFocusPosition({ rowId: newId, field: 'code' });
-    }, 0);
-  };
-
-  const removeItem = (id: number) => {
-    // Don't remove if it's the last item
-    if (items.length <= 1) {
-      // Instead of removing, reset the item
-      setItems([{
-        id: 1,
-        code: '',
-        desc: '',
-        packSize: '',
-        batchNo: '',
-        qty: 1,
-        tp: 0,
-        mrp: 0,
-        discPercent: 0,
-        gstPercent: 0,
-        addGst: 0,
-        advTax: 0,
-      }]);
-      setFocusPosition({ rowId: 1, field: 'code' });
-    } else {
-      setItems((prev) => {
-        const newItems = prev.filter((item) => item.id !== id);
-        // If we removed the focused row, focus the first item of the first row
-        if (focusPosition.rowId === id) {
-          setTimeout(() => {
-            setFocusPosition({ rowId: newItems[0].id, field: 'code' });
-          }, 0);
-        }
-        return newItems;
-      });
-    }
-  };
-
-  // Auto-focus first item when component mounts
-  useEffect(() => {
-    setFocusPosition({ rowId: 1, field: 'code' });
-  }, []);
-
-  // Handle print - ensures proper printing
-  const handlePrint = () => {
-    // Store original border styles
-    const originalStyles: string[] = [];
-
-    // Temporarily show all inputs as readonly/static for print
-    const inputs = document.querySelectorAll('input');
-    inputs.forEach((input, index) => {
-      originalStyles[index] = input.style.cssText;
-      input.style.border = '1px solid #ccc';
-      input.style.background = 'white';
-      input.classList.add('print-static');
-      input.readOnly = true;
-    });
-
-    // Trigger print
-    window.print();
-
-    // Restore inputs after print
-    setTimeout(() => {
-      inputs.forEach((input, index) => {
-        input.style.cssText = originalStyles[index];
-        input.classList.remove('print-static');
-        input.readOnly = false;
-      });
-    }, 100);
-  };
+  const [items, setItems] = useState<Item[]>([]);
+  const [terms, setTerms] = useState("Thank you for doing business with us. Goods once sold will not be taken back. All disputes subject to Karachi jurisdiction.");
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // --- Calculations ---
-  const calculatedItems = useMemo<CalculatedItem[]>(() => {
+  const calculatedItems = useMemo(() => {
     return items.map((item) => {
-      const qty = Number(item.qty) || 0;
-      const tp = Number(item.tp) || 0;
-      const discPercent = Number(item.discPercent) || 0;
-      const gstPercent = Number(item.gstPercent) || 0;
-      const addGst = Number(item.addGst) || 0;
-      const advTax = Number(item.advTax) || 0;
-
-      const grossAmount = qty * tp;
-      const discAmt = (grossAmount * discPercent) / 100;
-      const taxable = grossAmount - discAmt;
-      const gstAmt = (taxable * gstPercent) / 100;
-      const netAmount = taxable + gstAmt + addGst + advTax;
-
-      return {
-        ...item,
-        grossAmount,
-        discAmt,
-        gstAmt,
-        netAmount,
-      };
+      const amount = item.qty * item.price;
+      const netAmount = amount - item.discount;
+      return { ...item, amount, netAmount };
     });
   }, [items]);
 
   const totals = useMemo(() => {
     return calculatedItems.reduce(
       (acc, item) => ({
-        gross: acc.gross + item.grossAmount,
-        disc: acc.disc + item.discAmt,
-        gst: acc.gst + item.gstAmt,
-        addGst: acc.addGst + Number(item.addGst || 0),
-        advTax: acc.advTax + Number(item.advTax || 0),
-        net: acc.net + item.netAmount,
+        subTotal: acc.subTotal + item.amount,
+        discount: acc.discount + item.discount,
+        total: acc.total + item.netAmount,
       }),
-      { gross: 0, disc: 0, gst: 0, addGst: 0, advTax: 0, net: 0 }
+      { subTotal: 0, discount: 0, total: 0 }
     );
   }, [calculatedItems]);
 
+  // --- Handlers ---
+  const handleHeaderChange = (field: keyof Header, value: string) => {
+    setHeader(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleItemChange = (id: number, field: keyof Item, value: string | number) => {
+    setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
+
+  const addItem = () => {
+    const newId = Math.max(...items.map(i => i.id), 0) + 1;
+    setItems(prev => [...prev, {
+      id: newId,
+      desc: '',
+      qty: 1,
+      price: 0,
+      discount: 0,
+      gstPercent: 0
+    }]);
+  };
+
+  const removeItem = (id: number) => {
+    setItems(prev => prev.filter(i => i.id !== id));
+  };
+
+  const handlePrint = () => {
+    setIsPrinting(true);
+    setTimeout(() => {
+      window.print();
+      setIsPrinting(false);
+    }, 100);
+  };
+
+  const amountInWords = (amount: number) => {
+    const words = [
+      "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+      "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"
+    ];
+    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+    if (amount === 0) return "Zero Rupees Only";
+
+    let result = "Rupees ";
+    const crores = Math.floor(amount / 10000000);
+    const lakhs = Math.floor((amount % 10000000) / 100000);
+    const thousands = Math.floor((amount % 100000) / 1000);
+    const hundreds = Math.floor((amount % 1000) / 100);
+    const tensAndOnes = Math.floor(amount % 100);
+
+    if (crores > 0) result += `${words[crores] || `${tens[Math.floor(crores / 10)]} ${words[crores % 10]}`} Crore `;
+    if (lakhs > 0) result += `${words[lakhs] || `${tens[Math.floor(lakhs / 10)]} ${words[lakhs % 10]}`} Lakh `;
+    if (thousands > 0) result += `${words[thousands] || `${tens[Math.floor(thousands / 10)]} ${words[thousands % 10]}`} Thousand `;
+    if (hundreds > 0) result += `${words[hundreds]} Hundred `;
+    if (tensAndOnes > 0) {
+      if (tensAndOnes < 20) {
+        result += `${words[tensAndOnes]} `;
+      } else {
+        result += `${tens[Math.floor(tensAndOnes / 10)]} ${words[tensAndOnes % 10]} `;
+      }
+    }
+
+    const paisa = Math.round((amount - Math.floor(amount)) * 100);
+    if (paisa > 0) {
+      result += `and ${paisa}/100`;
+    }
+
+    return result + " Only";
+  };
+
   return (
-    <>
-      {/* Print-specific styles - Optimized for single page */}
-      <style>
-        {`
-          @media print {
-            @page {
-              margin: 5mm;
-              size: A4 portrait;
-            }
-            
-            body {
-              margin: 0 !important;
-              padding: 0 !important;
-              background: white !important;
-              font-size: 10px !important;
-              -webkit-print-color-adjust: exact !important;
-              color-adjust: exact !important;
-            }
-            
-            .print-hidden {
-              display: none !important;
-            }
-            
-            input, .TableInput {
-              border: 1px solid #ccc !important;
-              background: white !important;
-              min-height: 18px !important;
-              padding: 0 2px !important;
-              font-size: 10px !important;
-              line-height: 1.2 !important;
-            }
-            
-            .product-desc-input {
-              min-width: 120px !important;
-              max-width: 200px !important;
-              white-space: nowrap !important;
-              overflow: visible !important;
-              text-overflow: unset !important;
-            }
-            
-            .print-static {
-              border: none !important;
-              background: transparent !important;
-              pointer-events: none;
-              box-shadow: none !important;
-              outline: none !important;
-            }
-            
-            .no-print {
-              display: none !important;
-            }
-            
-            .print\\:shadow-none {
-              box-shadow: none !important;
-            }
-            
-            .print\\:bg-white {
-              background: white !important;
-            }
-            
-            .print\\:border-none {
-              border: none !important;
-            }
-            
-            .print\\:border-gray-300 {
-              border-color: #d1d5db !important;
-            }
-            
-            .ring-1, .focus\\:ring-1 {
-              box-shadow: none !important;
-              outline: none !important;
-            }
-            
-            .bg-gray-100 {
-              background: white !important;
-            }
-            
-            button, .group:hover button {
-              display: none !important;
-            }
-            
-            /* Ensure table fits in one page */
-            table {
-              page-break-inside: avoid !important;
-              border-collapse: collapse !important;
-              width: 100% !important;
-              table-layout: fixed !important;
-            }
-            
-            th, td {
-              padding: 2px 4px !important;
-              font-size: 9px !important;
-              line-height: 1.1 !important;
-              height: 20px !important;
-              overflow: visible !important;
-              white-space: nowrap !important;
-              page-break-inside: avoid !important;
-            }
-            
-            /* Product description column - wider and handles overflow */
-            td:nth-child(2) {
-              min-width: 120px !important;
-              max-width: 180px !important;
-              white-space: normal !important;
-              word-wrap: break-word !important;
-              overflow-wrap: break-word !important;
-            }
-            
-            /* Other columns with fixed widths */
-            td:nth-child(1) { width: 50px !important; } /* Prod Code */
-            td:nth-child(3) { width: 40px !important; } /* Pack Size */
-            td:nth-child(4) { width: 60px !important; } /* Batch No */
-            td:nth-child(5) { width: 30px !important; } /* QTY */
-            td:nth-child(6) { width: 45px !important; } /* TP */
-            td:nth-child(7) { width: 45px !important; } /* MRP */
-            td:nth-child(8) { width: 55px !important; } /* Gross Amt */
-            td:nth-child(9) { width: 35px !important; } /* Disc % */
-            td:nth-child(10) { width: 55px !important; } /* Disc Amt */
-            td:nth-child(11) { width: 35px !important; } /* GST % */
-            td:nth-child(12) { width: 45px !important; } /* Adv Tax */
-            td:nth-child(13) { width: 60px !important; } /* Net Amount */
-            
-            /* Container adjustments */
-            .max-w-\\[210mm\\] {
-              max-width: 210mm !important;
-              width: 210mm !important;
-              margin: 0 auto !important;
-            }
-            
-            .p-8 {
-              padding: 5mm !important;
-            }
-            
-            .min-h-\\[297mm\\] {
-              min-height: 275mm !important; /* Reduced to ensure fit */
-            }
-            
-            /* Reduce spacing between sections */
-            .mb-6 {
-              margin-bottom: 8px !important;
-            }
-            
-            .mt-8 {
-              margin-top: 10px !important;
-            }
-            
-            /* Adjust font sizes for print */
-            .text-xs {
-              font-size: 10px !important;
-            }
-            
-            .text-\\[10px\\] {
-              font-size: 9px !important;
-            }
-            
-            .text-lg {
-              font-size: 14px !important;
-            }
-            
-            .text-sm {
-              font-size: 11px !important;
-            }
+    <div className={`min-h-screen ${isPrinting ? 'bg-white' : 'bg-gradient-to-br from-blue-50 to-gray-100'} p-4 md:p-8 flex justify-center items-start font-sans`}>
+
+      {/* Print Styles - Optimized for single page */}
+      <style>{`
+        @media print {
+          @page { 
+            margin: 10mm !important; 
+            size: A4 portrait !important; 
           }
-        `}
-      </style>
+          body { 
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important; 
+            background: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .no-print { 
+            display: none !important; 
+          }
+          .print-container { 
+            box-shadow: none !important; 
+            margin: 0 !important; 
+            padding: 0 !important;
+            width: 100% !important; 
+            max-width: none !important;
+            min-height: auto !important;
+            height: auto !important;
+            overflow: hidden !important;
+            page-break-inside: avoid !important;
+          }
+          input, textarea, select { 
+            border: none !important; 
+            background: transparent !important; 
+            padding: 0 !important; 
+            box-shadow: none !important;
+          }
+          .print-page { 
+            page-break-after: avoid !important; 
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          table {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .compact-view {
+            font-size: 0.75rem !important;
+            line-height: 1.2 !important;
+          }
+          .compact-padding {
+            padding: 0.25rem !important;
+          }
+        }
+      `}</style>
 
-      <div className="min-h-screen bg-gray-100 p-4 print:p-0 text-xs font-sans">
+      {/* Main Container */}
+      <div className="w-full max-w-6xl space-y-6">
 
-        {/* Controls - Hidden in Print */}
-        <div className="max-w-[210mm] mx-auto mb-4 flex justify-between items-center no-print">
-          <h1 className="text-xl font-bold text-gray-700">Invoice Editor</h1>
-          <div className="flex items-center gap-4">
-            <div className="text-sm text-gray-600">
-              Press <kbd className="px-2 py-1 bg-gray-200 rounded">Enter</kbd> to move to next field
+        {/* Header Card */}
+        <div className="bg-white rounded-xl shadow-lg p-6 no-print">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-cyan-700">Invoice Generator</h1>
+              <p className="text-gray-600">Create professional invoices quickly</p>
             </div>
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
-            >
-              <Printer size={16} /> Print / Save PDF
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <div className="text-sm text-gray-500">Total Amount</div>
+                <div className="text-2xl font-bold text-cyan-700">
+                  Rs {totals.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+              <button
+                onClick={handlePrint}
+                className="bg-cyan-700 text-white px-6 py-3 rounded-lg hover:bg-cyan-800 transition-all flex items-center gap-2 font-semibold"
+              >
+                <Printer size={20} />
+                Print Invoice
+              </button>
+            </div>
           </div>
         </div>
 
-  
-        <div className="max-w-[210mm] mx-auto bg-white shadow-xl p-8 min-h-[277mm] flex flex-col print:shadow-none print:bg-white" style={{ minHeight: '277mm' }}>
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Left Column: Customer Information Only */}
+          <div className="lg:w-1/3 space-y-6 no-print">
 
-          {/* Header Section - Compact */}
-          <div className="flex justify-between items-start mb-4">
-            <div className="border-2 border-black px-6 py-1 font-bold text-lg tracking-wider print:border-black">
-              ESTIMATE
+            {/* Customer Details Card */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <User size={20} />
+                Customer Information
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Customer Name *
+                  </label>
+                  <CleanInput
+                    value={header.customerName}
+                    onChange={(v) => handleHeaderChange('customerName', v)}
+                    placeholder="Enter customer name"
+                    className="border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <CleanInput
+                    value={header.phone}
+                    onChange={(v) => handleHeaderChange('phone', v)}
+                    placeholder="Enter phone number"
+                    className="border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <UserRound size={16} className="inline mr-1" />
+                      Salesman Name
+                    </label>
+                    <CleanInput
+                      value={header.salesmanName}
+                      onChange={(v) => handleHeaderChange('salesmanName', v)}
+                      placeholder="Salesman name"
+                      className="border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <Calendar size={16} className="inline mr-1" />
+                      Date
+                    </label>
+                    <CleanInput
+                      type="date"
+                      value={header.date}
+                      onChange={(v) => handleHeaderChange('date', v)}
+                      className="border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="text-right">
-              {/* Optional Logo Area or Company Name if needed, kept blank to match image */}
+
+            {/* Simple Add Item Card */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Plus size={20} />
+                Add New Item
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">Click below to add a new item to your invoice</p>
+              <button
+                onClick={addItem}
+                className="w-full bg-cyan-700 text-white py-3 rounded-lg hover:bg-cyan-800 transition-all flex items-center justify-center gap-2 font-semibold"
+              >
+                <Plus size={20} /> Add New Item
+              </button>
             </div>
           </div>
 
-          {/* Info Grid - Compact */}
-          <div className="grid grid-cols-2 gap-x-12 mb-4">
-            {/* Left Column */}
-            <div className="space-y-0.5">
-              <div className="flex">
-                <span className="w-28 font-semibold">CUSTOMER CODE</span>
-                <Input name="customerCode" value={header.customerCode} onChange={handleHeaderChange} />
-              </div>
-              <div className="flex">
-                <span className="w-28 font-semibold">CUSTOMER NAME</span>
-                <Input name="customerName" value={header.customerName} onChange={handleHeaderChange} />
-              </div>
-              <div className="flex">
-                <span className="w-28 font-semibold">ADDRESS</span>
-                <Input name="address" value={header.address} onChange={handleHeaderChange} />
-              </div>
-              <div className="flex">
-                <span className="w-28 font-semibold">CONTACT #</span>
-                <Input name="contact" value={header.contact} onChange={handleHeaderChange} />
-              </div>
-              <div className="flex mt-1">
-                <span className="w-28 font-semibold">SALESMAN CODE</span>
-                <Input name="salesmanCode" value={header.salesmanCode} onChange={handleHeaderChange} />
-              </div>
-              <div className="flex">
-                <span className="w-28 font-semibold">SALESMAN NAME</span>
-                <Input name="salesmanName" value={header.salesmanName} onChange={handleHeaderChange} />
-              </div>
-            </div>
+          {/* Right Column: Invoice Preview */}
+          <div className="lg:w-2/3">
+            {/* Invoice Preview Container - Optimized for single page */}
+            <div className="print-container bg-white w-full min-h-[270mm] shadow-2xl relative flex flex-col rounded-xl overflow-hidden">
 
-            {/* Right Column */}
-            <div className="space-y-0.5">
-              <div className="flex">
-                <span className="w-28 font-semibold">ORDER #</span>
-                <span className="mr-2">:</span>
-                <Input name="orderNo" value={header.orderNo} onChange={handleHeaderChange} />
-              </div>
-              <div className="flex">
-                <span className="w-28 font-semibold">DATE</span>
-                <span className="mr-2">:</span>
-                <Input name="date" value={header.date} onChange={handleHeaderChange} type="date" />
-              </div>
-              <div className="flex">
-                <span className="w-28 font-semibold">CUST NTN #</span>
-                <Input name="custNtn" value={header.custNtn} onChange={handleHeaderChange} />
-              </div>
-              <div className="flex">
-                <span className="w-28 font-semibold">CUST CNIC #</span>
-                <Input name="custCnic" value={header.custCnic} onChange={handleHeaderChange} />
-              </div>
-              <div className="flex">
-                <span className="w-28 font-semibold">CUST GST #</span>
-                <Input name="custGst" value={header.custGst} onChange={handleHeaderChange} />
-              </div>
-            </div>
-          </div>
-
-          {/* Table - Fixed layout to prevent overflow */}
-          <div className="flex-grow overflow-hidden">
-            <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
-              <thead>
-                <tr className="border-t-2 border-b-2 border-black text-[10px] print:border-black">
-                  <th className="text-left py-1" style={{ width: '50px' }}>PROD CODE</th>
-                  <th className="text-left py-1" style={{ width: '180px' }}>PRODUCT DESCRIPTION</th>
-                  <th className="text-left py-1" style={{ width: '40px' }}>PACK SIZE</th>
-                  <th className="text-left py-1" style={{ width: '60px' }}>BATCH NO</th>
-                  <th className="text-right py-1" style={{ width: '30px' }}>QTY</th>
-                  <th className="text-right py-1" style={{ width: '45px' }}>TP</th>
-                  <th className="text-right py-1" style={{ width: '45px' }}>MRP</th>
-                  <th className="text-right py-1" style={{ width: '55px' }}>GROSS AMT</th>
-                  <th className="text-right py-1" style={{ width: '35px' }}>DISC (%)</th>
-                  <th className="text-right py-1" style={{ width: '55px' }}>DISC AMT</th>
-                  <th className="text-right py-1" style={{ width: '35px' }}>GST (%)</th>
-                  <th className="text-right py-1" style={{ width: '45px' }}>ADV TAX</th>
-                  <th className="text-right py-1" style={{ width: '60px' }}>NET AMOUNT</th>
-                  <th className="no-print" style={{ width: '30px' }}></th>
-                </tr>
-              </thead>
-              <tbody className="text-[10px]">
-                {calculatedItems.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-100 print:border-gray-300 group hover:bg-gray-50">
-                    <td style={{ width: '50px' }}>
-                      <TableInput
-                        value={item.code}
-                        onChange={(v) => handleItemChange(item.id, 'code', v)}
-                        rowId={item.id}
-                        field="code"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'code'}
-                      />
-                    </td>
-                    <td style={{ width: '180px', minWidth: '180px' }}>
-                      <div className="relative">
-                        <TableInput
-                          value={item.desc}
-                          onChange={(v) => handleItemChange(item.id, 'desc', v)}
-                          rowId={item.id}
-                          field="desc"
-                          inputRefs={inputRefs}
-                          handleKeyDown={handleKeyDown}
-                          onFieldFocus={handleFieldFocus}
-                          isFocused={focusPosition.rowId === item.id && focusPosition.field === 'desc'}
-                          className="product-desc-input"
+              {/* Company Header - Compact for print */}
+              <div className="p-6 pb-3 bg-gradient-to-r from-cyan-50 to-white print:bg-white print:p-4">
+                <div className="text-center mb-1">
+                  <CleanInput
+                    value={header.companyName}
+                    onChange={(v) => handleHeaderChange('companyName', v)}
+                    className="font-bold text-cyan-700 text-xl text-center mb-0.5 print:text-lg print:font-extrabold"
+                    placeholder="Company Name"
+                  />
+                  <div className="text-xs text-gray-600 space-y-0.5 print:text-xs">
+                    <CleanInput
+                      value={header.companyAddress}
+                      onChange={(v) => handleHeaderChange('companyAddress', v)}
+                      placeholder="Company Address"
+                      className="text-center print:text-xs"
+                    />
+                    <div className="flex flex-col items-center gap-0.5 print:flex-row print:justify-center print:gap-4">
+                      <span>
+                        Phone: <CleanInput
+                          value={header.companyPhone}
+                          onChange={(v) => handleHeaderChange('companyPhone', v)}
+                          placeholder="Company Phone"
+                          className="inline w-32 print:w-24"
                         />
-                        {/* Show full description on hover */}
-                        <div className="no-print absolute z-50 hidden group-hover:block bg-white border border-gray-300 shadow-lg p-2 rounded text-xs max-w-xs">
-                          {item.desc || '(Empty)'}
+                      </span>
+                      {header.companyEmail && (
+                        <span>
+                          Email: <CleanInput
+                            value={header.companyEmail}
+                            onChange={(v) => handleHeaderChange('companyEmail', v)}
+                            placeholder="Company Email"
+                            className="inline w-40 print:w-32"
+                          />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Invoice Title */}
+                <div className="text-center my-4 print:my-3">
+                  <div className="inline-block border-b-3 border-cyan-700 pb-1 print:border-b-2">
+                    <h1 className="text-2xl font-bold text-cyan-700 print:text-xl">INVOICE</h1>
+                  </div>
+                </div>
+
+                {/* Customer & Invoice Details - Compact layout */}
+                <div className="flex flex-col md:flex-row justify-between items-start gap-3 mb-4 print:flex-row print:gap-4 print:mb-3">
+                  <div className="md:w-1/2 print:w-1/2">
+                    <div className="bg-gray-50 p-3 rounded print:bg-transparent print:p-2 print:border">
+                      <h3 className="font-bold text-xs text-gray-800 mb-1 print:text-xs">BILL TO</h3>
+                      {header.customerName ? (
+                        <>
+                          <CleanInput
+                            value={header.customerName}
+                            onChange={(v) => handleHeaderChange('customerName', v)}
+                            className="font-bold text-gray-900 text-base mb-0.5 print:text-sm"
+                          />
+                          {header.phone && (
+                            <div className="text-xs flex items-center gap-0.5">
+                              <span>📞</span>
+                              <CleanInput
+                                value={header.phone}
+                                onChange={(v) => handleHeaderChange('phone', v)}
+                                placeholder="Phone"
+                                className="w-32 print:w-28"
+                              />
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-gray-400 italic text-xs">No customer selected</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 md:w-1/2 print:w-1/2">
+                    <div className="bg-gray-50 p-3 rounded print:bg-transparent print:p-2 print:border">
+                      <h3 className="font-bold text-xs text-gray-800 mb-1 print:text-xs">SALESMAN</h3>
+                      <CleanInput
+                        value={header.salesmanName}
+                        onChange={(v) => handleHeaderChange('salesmanName', v)}
+                        className="font-bold text-right w-full print:text-sm"
+                        placeholder="Salesman Name"
+                      />
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded print:bg-transparent print:p-2 print:border">
+                      <h3 className="font-bold text-xs text-gray-800 mb-1 print:text-xs">DATE</h3>
+                      <div className="text-right">
+                        <CleanInput
+                          type="date"
+                          value={header.date}
+                          onChange={(v) => handleHeaderChange('date', v)}
+                          className="font-medium text-right w-full print:text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Products Table - Compact view */}
+              <div className="flex-grow px-6 print:px-4">
+                {items.length === 0 ? (
+                  <div className="text-center py-12 print:py-8">
+                    <ShoppingCart size={48} className="mx-auto text-gray-300 mb-3 print:hidden" />
+                    <h3 className="text-lg font-semibold text-gray-400 mb-2 print:text-base">No Items Added</h3>
+                    <p className="text-gray-500 mb-6 print:text-sm">Add items to create your invoice</p>
+                    <button
+                      onClick={addItem}
+                      className="bg-cyan-700 text-white px-6 py-3 rounded-lg hover:bg-cyan-800 transition-all flex items-center gap-2 mx-auto no-print"
+                    >
+                      <Plus size={20} /> Add Your First Item
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <table className="w-full border-collapse text-xs print:text-[10px]">
+                      <thead>
+                        <tr className="bg-cyan-700 text-white font-semibold print:bg-cyan-700">
+                          <th className="py-2 px-2 text-left w-6 print:py-1 print:px-1">#</th>
+                          <th className="py-2 px-2 text-left print:py-1 print:px-1">Item Description</th>
+                          <th className="py-2 px-2 text-right w-14 print:py-1 print:px-1">Qty</th>
+                          <th className="py-2 px-2 text-right w-20 print:py-1 print:px-1">Price</th>
+                          <th className="py-2 px-2 text-right w-20 print:py-1 print:px-1">Discount</th>
+                          <th className="py-2 px-2 text-right w-24 print:py-1 print:px-1">Amount</th>
+                          <th className="w-6 no-print print:hidden"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-xs print:text-[10px]">
+                        {calculatedItems.map((item, index) => (
+                          <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50 group print:border-b print:border-gray-200">
+                            <td className="py-2 px-2 font-medium print:py-1 print:px-1">{index + 1}</td>
+                            <td className="py-2 px-2 print:py-1 print:px-1">
+                              <CleanInput
+                                value={item.desc}
+                                onChange={(v) => handleItemChange(item.id, 'desc', v)}
+                                placeholder="Enter item description"
+                                className="w-full print:text-[10px]"
+                              />
+                            </td>
+                            <td className="py-2 px-2 text-right print:py-1 print:px-1">
+                              <CleanInput
+                                type="number"
+                                value={item.qty}
+                                onChange={(v) => handleItemChange(item.id, 'qty', parseFloat(v) || 0)}
+                                align="right"
+                                className="w-full print:text-[10px]"
+                                min="1"
+                              />
+                            </td>
+                            <td className="py-2 px-2 text-right print:py-1 print:px-1">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <span className="text-gray-500 print:text-[9px]">Rs</span>
+                                <CleanInput
+                                  type="number"
+                                  value={item.price}
+                                  onChange={(v) => handleItemChange(item.id, 'price', parseFloat(v) || 0)}
+                                  align="right"
+                                  className="w-full print:text-[10px]"
+                                  min="0"
+                                  step="0.01"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-right print:py-1 print:px-1">
+                              <CleanInput
+                                type="number"
+                                value={item.discount}
+                                onChange={(v) => handleItemChange(item.id, 'discount', parseFloat(v) || 0)}
+                                align="right"
+                                className="w-full print:text-[10px]"
+                                min="0"
+                                step="0.01"
+                              />
+                            </td>
+                            <td className="py-2 px-2 text-right font-bold text-cyan-700 print:py-1 print:px-1 print:text-[11px]">
+                              Rs {item.netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="text-center no-print print:hidden">
+                              <button
+                                onClick={() => removeItem(item.id)}
+                                className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <button
+                      onClick={addItem}
+                      className="mt-3 text-cyan-700 hover:text-cyan-800 flex items-center gap-2 text-sm font-semibold hover:underline no-print"
+                    >
+                      <Plus size={16} /> Add New Item
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Footer Section - Optimized for single page */}
+              <div className="p-6 mt-auto print:p-4 print:mt-2">
+                <div className="flex flex-col lg:flex-row gap-4 print:flex-row print:gap-3 print:text-xs">
+
+                  {/* Left: Words & Terms */}
+                  <div className="lg:w-2/3 space-y-4 print:w-2/3 print:space-y-2">
+                    <div className="bg-white p-3 rounded border print:p-2 print:border-none">
+                      <h4 className="font-bold text-xs text-gray-800 mb-1 print:text-xs">Amount in Words</h4>
+                      <p className="text-xs text-gray-700 font-medium print:text-xs leading-tight">
+                        {amountInWords(totals.total)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-3 rounded border print:p-2 print:border-none">
+                      <h4 className="font-bold text-xs text-gray-800 mb-1 print:text-xs">Terms & Conditions</h4>
+                      <textarea
+                        value={terms}
+                        onChange={(e) => setTerms(e.target.value)}
+                        className="w-full text-xs text-gray-700 resize-none outline-none bg-transparent print:text-xs print:leading-tight"
+                        rows={2}
+                        placeholder="Enter terms and conditions..."
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right: Totals - Compact */}
+                  <div className="lg:w-1/3 print:w-1/3">
+                    <div className="bg-white p-4 rounded border space-y-2 print:p-3 print:space-y-1 print:border-none">
+                      <div className="flex justify-between text-gray-600 print:text-xs">
+                        <span>Sub Total:</span>
+                        <span className="font-medium">Rs {totals.subTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-600 print:text-xs">
+                        <span>Discount:</span>
+                        <span className="font-medium text-red-600">- Rs {totals.discount.toFixed(2)}</span>
+                      </div>
+
+                      <div className="border-t pt-2 mt-2 print:pt-1 print:mt-1">
+                        <div className="flex justify-between items-center bg-cyan-700 text-white font-bold p-2 rounded print:p-1.5">
+                          <span className="print:text-xs">TOTAL</span>
+                          <span className="text-base print:text-sm">Rs {totals.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                         </div>
                       </div>
-                    </td>
-                    <td style={{ width: '40px' }}>
-                      <TableInput
-                        value={item.packSize}
-                        onChange={(v) => handleItemChange(item.id, 'packSize', v)}
-                        rowId={item.id}
-                        field="packSize"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'packSize'}
-                      />
-                    </td>
-                    <td style={{ width: '60px' }}>
-                      <TableInput
-                        value={item.batchNo}
-                        onChange={(v) => handleItemChange(item.id, 'batchNo', v)}
-                        rowId={item.id}
-                        field="batchNo"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'batchNo'}
-                      />
-                    </td>
-                    <td style={{ width: '30px' }}>
-                      <TableInput
-                        type="number"
-                        value={item.qty}
-                        align="right"
-                        onChange={(v) => handleItemChange(item.id, 'qty', parseFloat(v as string) || 0)}
-                        rowId={item.id}
-                        field="qty"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'qty'}
-                      />
-                    </td>
-                    <td style={{ width: '45px' }}>
-                      <TableInput
-                        type="number"
-                        value={item.tp}
-                        align="right"
-                        onChange={(v) => handleItemChange(item.id, 'tp', parseFloat(v as string) || 0)}
-                        rowId={item.id}
-                        field="tp"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'tp'}
-                      />
-                    </td>
-                    <td style={{ width: '45px' }}>
-                      <TableInput
-                        type="number"
-                        value={item.mrp}
-                        align="right"
-                        onChange={(v) => handleItemChange(item.id, 'mrp', parseFloat(v as string) || 0)}
-                        rowId={item.id}
-                        field="mrp"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'mrp'}
-                      />
-                    </td>
 
-                    <td className="text-right py-1 pr-1 print:pr-1" style={{ width: '55px' }}>
-                      {item.grossAmount.toFixed(2)}
-                    </td>
-
-
-                    <td style={{ width: '35px' }}>
-                      <TableInput
-                        type="number"
-                        value={item.discPercent}
-                        align="right"
-                        onChange={(v) => handleItemChange(item.id, 'discPercent', parseFloat(v as string) || 0)}
-                        rowId={item.id}
-                        field="discPercent"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'discPercent'}
-                      />
-                    </td>
-
-                    <td className="text-right py-1 pr-1 print:pr-1" style={{ width: '55px' }}>{item.discAmt.toFixed(2)}</td>
-
-                    <td style={{ width: '35px' }}>
-                      <TableInput
-                        type="number"
-                        value={item.gstPercent}
-                        align="right"
-                        onChange={(v) => handleItemChange(item.id, 'gstPercent', parseFloat(v as string) || 0)}
-                        rowId={item.id}
-                        field="gstPercent"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'gstPercent'}
-                      />
-                    </td>
-
-                    <td style={{ width: '45px' }}>
-                      <TableInput
-                        type="number"
-                        value={item.advTax}
-                        align="right"
-                        onChange={(v) => handleItemChange(item.id, 'advTax', parseFloat(v as string) || 0)}
-                        rowId={item.id}
-                        field="advTax"
-                        inputRefs={inputRefs}
-                        handleKeyDown={handleKeyDown}
-                        onFieldFocus={handleFieldFocus}
-                        isFocused={focusPosition.rowId === item.id && focusPosition.field === 'advTax'}
-                      />
-                    </td>
-
-                    <td className="text-right py-1 font-semibold print:py-1" style={{ width: '60px' }}>{item.netAmount.toFixed(2)}</td>
-
-                    <td className="no-print text-center" style={{ width: '30px' }}>
-                      <button
-                        onClick={() => removeItem(item.id)}
-                        className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                        title="Remove item"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <button
-              onClick={addItem}
-              className="mt-4 flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium no-print"
-            >
-              <Plus size={16} /> Add Product
-            </button>
-          </div>
-
-          {/* Footer - Compact */}
-          <div className="mt-4 border-t-2 border-black pt-2 text-xs print:border-black">
-            <div className="flex justify-between items-end">
-              <div className="w-1/3">
-                <div className="flex items-center gap-4">
-                  <span>No of Items:</span>
-                  <span className="font-bold">{items.length}</span>
-                </div>
-              </div>
-
-              <div className="w-2/3">
-                <div className="grid grid-cols-5 text-right gap-2 mb-2 font-medium text-[10px]">
-                  <div className="flex flex-col">
-                    <span className="text-gray-500">Total Gross</span>
-                    <span>{totals.gross.toFixed(2)}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-500">Total Disc</span>
-                    <span>{totals.disc.toFixed(2)}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-500">Total GST</span>
-                    <span>{totals.gst.toFixed(2)}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-500">Total Adv Tax</span>
-                    <span>{totals.advTax.toFixed(2)}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-500">Net Total</span>
-                    <span>{totals.net.toFixed(2)}</span>
+                      <div className="space-y-1 pt-2 border-t print:pt-1">
+                        <div className="flex justify-between text-gray-600 print:text-xs">
+                          <span>Amount Paid:</span>
+                          <span>Rs 0.00</span>
+                        </div>
+                        <div className="flex justify-between text-gray-800 font-bold print:text-xs">
+                          <span>Balance Due:</span>
+                          <span>Rs {totals.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="border-t border-black border-b py-1 flex justify-between items-center text-sm font-bold print:border-black">
-                  <span>BILL AMOUNT {'------>'} RS.</span>
-                  <span className="text-lg">{Math.round(totals.net).toFixed(2)}</span>
+                {/* Signatures - Compact */}
+                <div className="flex justify-between items-end mt-6 pt-4 border-t print:mt-4 print:pt-2">
+                  <div className="text-xs text-gray-500 print:text-[10px]">
+                    <p>Thank you for your business!</p>
+                    <p className="mt-0.5 print:mt-0">For queries, contact: {header.companyPhone}</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs font-semibold mb-6 print:text-xs print:mb-4">For: {header.companyName}</div>
+                    <div className="text-xs font-bold border-t border-gray-700 pt-1 px-6 print:text-xs print:pt-0.5 print:px-4">
+                      Authorized Signatory
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 text-center text-[10px] text-gray-500">
-              Computer generated invoice. Signature not required.
+            {/* Quick Actions Bar */}
+            <div className="mt-4 flex flex-wrap gap-3 no-print">
+              <button
+                onClick={addItem}
+                className="bg-white text-cyan-700 border border-cyan-700 px-4 py-2 rounded-lg hover:bg-cyan-50 flex items-center gap-2"
+              >
+                <Plus size={16} /> Add Item
+              </button>
+              <button
+                onClick={() => {
+                  setItems([]);
+                  handleHeaderChange('customerName', '');
+                  handleHeaderChange('phone', '');
+                  handleHeaderChange('salesmanName', '');
+                }}
+                className="bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50"
+              >
+                Clear All
+              </button>
             </div>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
